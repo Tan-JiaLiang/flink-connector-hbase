@@ -23,7 +23,6 @@ import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.io.InputFormat;
 import org.apache.flink.connector.hbase.util.HBaseTableSchema;
 import org.apache.flink.table.connector.ChangelogMode;
-import org.apache.flink.table.connector.Projection;
 import org.apache.flink.table.connector.source.InputFormatProvider;
 import org.apache.flink.table.connector.source.LookupTableSource;
 import org.apache.flink.table.connector.source.ScanTableSource;
@@ -48,6 +47,7 @@ public abstract class AbstractHBaseDynamicTableSource
     protected final Configuration conf;
     protected final String tableName;
     protected HBaseTableSchema hbaseSchema;
+    protected int[][] projection;
     protected final String nullStringLiteral;
     protected final int maxRetryTimes;
     @Nullable protected final LookupCache cache;
@@ -89,7 +89,7 @@ public abstract class AbstractHBaseDynamicTableSource
                 "Currently, HBase table only supports lookup by rowkey field.");
         HBaseRowDataLookupFunction lookupFunction =
                 new HBaseRowDataLookupFunction(
-                        conf, tableName, hbaseSchema, nullStringLiteral, maxRetryTimes);
+                        conf, tableName, hbaseSchema, nullStringLiteral, projection, maxRetryTimes);
         if (cache != null) {
             return PartialCachingLookupProvider.of(lookupFunction, cache);
         } else {
@@ -99,15 +99,12 @@ public abstract class AbstractHBaseDynamicTableSource
 
     @Override
     public boolean supportsNestedProjection() {
-        // planner doesn't support nested projection push down yet.
-        return false;
+        return true;
     }
 
     @Override
     public void applyProjection(int[][] projectedFields, DataType producedDataType) {
-        this.hbaseSchema =
-                HBaseTableSchema.fromDataType(
-                        Projection.of(projectedFields).project(hbaseSchema.convertToDataType()));
+        this.projection = projectedFields;
     }
 
     @Override

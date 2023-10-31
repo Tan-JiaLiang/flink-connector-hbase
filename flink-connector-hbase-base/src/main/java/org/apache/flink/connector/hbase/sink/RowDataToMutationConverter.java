@@ -43,7 +43,7 @@ public class RowDataToMutationConverter implements HBaseMutationConverter<RowDat
 
     @Override
     public void open() {
-        this.serde = new HBaseSerde(schema, nullStringLiteral);
+        this.serde = new HBaseSerde(schema, null, nullStringLiteral);
     }
 
     @Override

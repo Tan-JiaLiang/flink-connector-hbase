@@ -54,7 +54,8 @@ public class HBaseDynamicTableSource extends AbstractHBaseDynamicTableSource {
 
     @Override
     public InputFormat<RowData, ?> getInputFormat() {
-        return new HBaseRowDataInputFormat(conf, tableName, hbaseSchema, nullStringLiteral);
+        return new HBaseRowDataInputFormat(
+                conf, tableName, hbaseSchema, projection, nullStringLiteral);
     }
 
     @Override

@@ -54,6 +54,11 @@ import static org.junit.Assert.assertTrue;
 public class HBaseTestingClusterAutoStarter {
     private static final Log LOG = LogFactory.getLog(HBaseTestingClusterAutoStarter.class);
 
+    static {
+        System.setProperty("test.build.data.basedirectory", "D:\\environment\\hbase-data");
+        System.setProperty("hadoop.home.dir", "D:\\environment\\hadoop-2.8.1");
+    }
+
     private static final Range<String> HADOOP_VERSION_RANGE =
             Range.between("2.8.0", "3.0.3", VersionUtil::compareVersions);
 

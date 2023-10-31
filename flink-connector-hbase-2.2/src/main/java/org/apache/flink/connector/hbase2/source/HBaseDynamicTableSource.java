@@ -74,7 +74,12 @@ public class HBaseDynamicTableSource extends AbstractHBaseDynamicTableSource {
         if (lookupAsync) {
             HBaseRowDataAsyncLookupFunction asyncLookupFunction =
                     new HBaseRowDataAsyncLookupFunction(
-                            conf, tableName, hbaseSchema, nullStringLiteral, maxRetryTimes);
+                            conf,
+                            tableName,
+                            hbaseSchema,
+                            nullStringLiteral,
+                            projection,
+                            maxRetryTimes);
             if (cache != null) {
                 return PartialCachingAsyncLookupProvider.of(asyncLookupFunction, cache);
             } else {
@@ -83,7 +88,12 @@ public class HBaseDynamicTableSource extends AbstractHBaseDynamicTableSource {
         } else {
             HBaseRowDataLookupFunction lookupFunction =
                     new HBaseRowDataLookupFunction(
-                            conf, tableName, hbaseSchema, nullStringLiteral, maxRetryTimes);
+                            conf,
+                            tableName,
+                            hbaseSchema,
+                            nullStringLiteral,
+                            projection,
+                            maxRetryTimes);
             if (cache != null) {
                 return PartialCachingLookupProvider.of(lookupFunction, cache);
             } else {
@@ -100,7 +110,8 @@ public class HBaseDynamicTableSource extends AbstractHBaseDynamicTableSource {
 
     @Override
     protected InputFormat<RowData, ?> getInputFormat() {
-        return new HBaseRowDataInputFormat(conf, tableName, hbaseSchema, nullStringLiteral);
+        return new HBaseRowDataInputFormat(
+                conf, tableName, hbaseSchema, projection, nullStringLiteral);
     }
 
     @Override

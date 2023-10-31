@@ -44,6 +44,7 @@ public class HBaseRowDataInputFormat extends AbstractTableInputFormat<RowData> {
 
     private final String tableName;
     private final HBaseTableSchema schema;
+    private final int[][] projection;
     private final String nullStringLiteral;
 
     private transient HBaseSerde serde;
@@ -52,16 +53,18 @@ public class HBaseRowDataInputFormat extends AbstractTableInputFormat<RowData> {
             org.apache.hadoop.conf.Configuration conf,
             String tableName,
             HBaseTableSchema schema,
+            int[][] projection,
             String nullStringLiteral) {
         super(conf);
         this.tableName = tableName;
         this.schema = schema;
+        this.projection = projection;
         this.nullStringLiteral = nullStringLiteral;
     }
 
     @Override
     protected void initTable() throws IOException {
-        this.serde = new HBaseSerde(schema, nullStringLiteral);
+        this.serde = new HBaseSerde(schema, projection, nullStringLiteral);
         if (table == null) {
             connectToTable();
         }

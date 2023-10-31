@@ -24,10 +24,13 @@ import org.apache.flink.table.types.DataType;
 
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.KeyValue;
+import org.apache.hadoop.hbase.client.Get;
 import org.apache.hadoop.hbase.client.Result;
+import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.junit.jupiter.api.Test;
 
+import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -56,9 +59,11 @@ class HBaseSerdeTest {
     private static final String F3COL2 = "col2";
     private static final String F3COL3 = "col3";
 
+    private static final String CHARSET = "UTF-8";
+
     @Test
     void convertToNewRowTest() {
-        HBaseSerde serde = createHBaseSerde();
+        HBaseSerde serde = new HBaseSerde(createHBaseTableSchema(), null, "null");
         List<List<Cell>> cellsList = prepareCells();
         List<RowData> resultRowDatas = new ArrayList<>();
         List<String> resultRowDataStr = new ArrayList<>();
@@ -78,8 +83,27 @@ class HBaseSerdeTest {
     }
 
     @Test
+    void convertToNewRowWithProjectionTest() {
+        HBaseSerde serde = new HBaseSerde(createHBaseTableSchema(), createProjection(), "null");
+        List<List<Cell>> cellsList = prepareCells();
+        List<RowData> resultRowDatas = new ArrayList<>();
+        List<String> resultRowDataStr = new ArrayList<>();
+        for (List<Cell> cells : cellsList) {
+            RowData row = serde.convertToNewRow(Result.create(cells));
+            resultRowDatas.add(row);
+            resultRowDataStr.add(row.toString());
+        }
+
+        assertThat(resultRowDatas.get(0))
+                .as("RowData should not be reused")
+                .isNotSameAs(resultRowDatas.get(1));
+        assertThat(resultRowDataStr)
+                .containsExactly("+I(1,+I(10),Welt-1,1.01)", "+I(2,+I(20),Welt-2,2.02)");
+    }
+
+    @Test
     void convertToReusedRowTest() {
-        HBaseSerde serde = createHBaseSerde();
+        HBaseSerde serde = new HBaseSerde(createHBaseTableSchema(), null, "null");
         List<List<Cell>> cellsList = prepareCells();
         List<RowData> resultRowDatas = new ArrayList<>();
         List<String> resultRowDataStr = new ArrayList<>();
@@ -92,14 +116,96 @@ class HBaseSerdeTest {
         assertThat(resultRowDatas.get(0))
                 .as("RowData should be reused")
                 .isSameAs(resultRowDatas.get(1));
-
         assertThat(resultRowDataStr)
                 .containsExactly(
                         "+I(1,+I(10),+I(Hello-1,100),+I(1.01,false,Welt-1))",
                         "+I(2,+I(20),+I(Hello-2,200),+I(2.02,true,Welt-2))");
     }
 
-    private HBaseSerde createHBaseSerde() {
+    @Test
+    void convertToReusedRowWithProjectionTest() {
+        HBaseSerde serde = new HBaseSerde(createHBaseTableSchema(), createProjection(), "null");
+        List<List<Cell>> cellsList = prepareCells();
+        List<RowData> resultRowDatas = new ArrayList<>();
+        List<String> resultRowDataStr = new ArrayList<>();
+        for (List<Cell> cells : cellsList) {
+            RowData row = serde.convertToReusedRow(Result.create(cells));
+            resultRowDatas.add(row);
+            resultRowDataStr.add(row.toString());
+        }
+
+        assertThat(resultRowDatas.get(0))
+                .as("RowData should be reused")
+                .isSameAs(resultRowDatas.get(1));
+        assertThat(resultRowDataStr)
+                .containsExactly("+I(1,+I(10),Welt-1,1.01)", "+I(2,+I(20),Welt-2,2.02)");
+    }
+
+    @Test
+    public void createScan() throws UnsupportedEncodingException {
+        HBaseSerde serde = new HBaseSerde(createHBaseTableSchema(), null, "null");
+        Scan scan = serde.createScan();
+        assertThat(scan.getFamilyMap())
+                .containsOnlyKeys(
+                        FAMILY1.getBytes(CHARSET),
+                        FAMILY2.getBytes(CHARSET),
+                        FAMILY3.getBytes(CHARSET));
+        assertThat(scan.getFamilyMap().get(FAMILY1.getBytes(CHARSET)))
+                .containsOnly(F1COL1.getBytes(CHARSET));
+        assertThat(scan.getFamilyMap().get(FAMILY2.getBytes(CHARSET)))
+                .containsOnly(F2COL1.getBytes(CHARSET), F2COL2.getBytes(CHARSET));
+        assertThat(scan.getFamilyMap().get(FAMILY3.getBytes(CHARSET)))
+                .containsOnly(
+                        F3COL1.getBytes(CHARSET),
+                        F3COL2.getBytes(CHARSET),
+                        F3COL3.getBytes(CHARSET));
+    }
+
+    @Test
+    public void createScanWithProjectionTest() throws UnsupportedEncodingException {
+        HBaseSerde serde = new HBaseSerde(createHBaseTableSchema(), createProjection(), "null");
+        Scan scan = serde.createScan();
+        assertThat(scan.getFamilyMap())
+                .containsOnlyKeys(FAMILY1.getBytes(CHARSET), FAMILY3.getBytes(CHARSET));
+        assertThat(scan.getFamilyMap().get(FAMILY1.getBytes(CHARSET)))
+                .containsOnly(F1COL1.getBytes(CHARSET));
+        assertThat(scan.getFamilyMap().get(FAMILY3.getBytes(CHARSET)))
+                .containsOnly(F3COL3.getBytes(CHARSET), F3COL1.getBytes(CHARSET));
+    }
+
+    @Test
+    public void createGetTest() throws UnsupportedEncodingException {
+        HBaseSerde serde = new HBaseSerde(createHBaseTableSchema(), null, "null");
+        Get get = serde.createGet(1);
+        assertThat(get.getFamilyMap())
+                .containsOnlyKeys(
+                        FAMILY1.getBytes(CHARSET),
+                        FAMILY2.getBytes(CHARSET),
+                        FAMILY3.getBytes(CHARSET));
+        assertThat(get.getFamilyMap().get(FAMILY1.getBytes(CHARSET)))
+                .containsOnly(F1COL1.getBytes(CHARSET));
+        assertThat(get.getFamilyMap().get(FAMILY2.getBytes(CHARSET)))
+                .containsOnly(F2COL1.getBytes(CHARSET), F2COL2.getBytes(CHARSET));
+        assertThat(get.getFamilyMap().get(FAMILY3.getBytes(CHARSET)))
+                .containsOnly(
+                        F3COL1.getBytes(CHARSET),
+                        F3COL2.getBytes(CHARSET),
+                        F3COL3.getBytes(CHARSET));
+    }
+
+    @Test
+    public void createGetWithProjectionTest() throws UnsupportedEncodingException {
+        HBaseSerde serde = new HBaseSerde(createHBaseTableSchema(), createProjection(), "null");
+        Get get = serde.createGet(1);
+        assertThat(get.getFamilyMap())
+                .containsOnlyKeys(FAMILY1.getBytes(CHARSET), FAMILY3.getBytes(CHARSET));
+        assertThat(get.getFamilyMap().get(FAMILY1.getBytes(CHARSET)))
+                .containsOnly(F1COL1.getBytes(CHARSET));
+        assertThat(get.getFamilyMap().get(FAMILY3.getBytes(CHARSET)))
+                .containsOnly(F3COL3.getBytes(CHARSET), F3COL1.getBytes(CHARSET));
+    }
+
+    private HBaseTableSchema createHBaseTableSchema() {
         DataType dataType =
                 ROW(
                         FIELD(ROW_KEY, INT()),
@@ -111,8 +217,11 @@ class HBaseSerdeTest {
                                         FIELD(F3COL1, DOUBLE()),
                                         FIELD(F3COL2, DataTypes.BOOLEAN()),
                                         FIELD(F3COL3, STRING()))));
-        HBaseTableSchema hbaseSchema = HBaseTableSchema.fromDataType(dataType);
-        return new HBaseSerde(hbaseSchema, "null");
+        return HBaseTableSchema.fromDataType(dataType);
+    }
+
+    private int[][] createProjection() {
+        return new int[][] {new int[] {0}, new int[] {1}, new int[] {3, 2}, new int[] {3, 0}};
     }
 
     private List<List<Cell>> prepareCells() {

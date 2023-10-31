@@ -126,24 +126,25 @@ public class HBaseConnectorITCase extends HBaseTestBase {
         Table table =
                 tEnv.sqlQuery(
                         "SELECT "
-                                + "  h.family1.col1, "
+                                + "  rowkey,"
+                                + "  h.family3, "
                                 + "  h.family3.col1, "
-                                + "  h.family3.col2, "
+                                + "  h.family1.col1, "
                                 + "  h.family3.col3 "
                                 + "FROM hTable AS h");
 
-        List<Row> results = CollectionUtil.iteratorToList(table.execute().collect());
         String expected =
-                "+I[10, 1.01, false, Welt-1]\n"
-                        + "+I[20, 2.02, true, Welt-2]\n"
-                        + "+I[30, 3.03, false, Welt-3]\n"
-                        + "+I[40, 4.04, true, Welt-4]\n"
-                        + "+I[50, 5.05, false, Welt-5]\n"
-                        + "+I[60, 6.06, true, Welt-6]\n"
-                        + "+I[70, 7.07, false, Welt-7]\n"
-                        + "+I[80, 8.08, true, Welt-8]\n";
+                "+I[1, +I[1.01, false, Welt-1], 1.01, 10, Welt-1]\n"
+                        + "+I[2, +I[2.02, true, Welt-2], 2.02, 20, Welt-2]\n"
+                        + "+I[3, +I[3.03, false, Welt-3], 3.03, 30, Welt-3]\n"
+                        + "+I[4, +I[4.04, true, Welt-4], 4.04, 40, Welt-4]\n"
+                        + "+I[5, +I[5.05, false, Welt-5], 5.05, 50, Welt-5]\n"
+                        + "+I[6, +I[6.06, true, Welt-6], 6.06, 60, Welt-6]\n"
+                        + "+I[7, +I[7.07, false, Welt-7], 7.07, 70, Welt-7]\n"
+                        + "+I[8, +I[8.08, true, Welt-8], 8.08, 80, Welt-8]\n";
 
-        TestBaseUtils.compareResultAsText(results, expected);
+        TestBaseUtils.compareResultAsText(
+                CollectionUtil.iteratorToList(table.execute().collect()), expected);
     }
 
     @Test
@@ -425,7 +426,7 @@ public class HBaseConnectorITCase extends HBaseTestBase {
         HBaseTableSchema tableSchema = new HBaseTableSchema();
         tableSchema.addColumn(FAMILY1, F1COL1, byte[].class);
         AbstractTableInputFormat<?> inputFormat =
-                new HBaseRowDataInputFormat(getConf(), TEST_TABLE_1, tableSchema, "null");
+                new HBaseRowDataInputFormat(getConf(), TEST_TABLE_1, tableSchema, null, "null");
         inputFormat.open(inputFormat.createInputSplits(1)[0]);
         assertNotNull(inputFormat.getConnection());
         assertNotNull(inputFormat.getConnection().getTable(TableName.valueOf(TEST_TABLE_1)));

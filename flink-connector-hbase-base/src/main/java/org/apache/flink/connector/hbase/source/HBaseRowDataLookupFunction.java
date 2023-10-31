@@ -60,6 +60,7 @@ public class HBaseRowDataLookupFunction extends LookupFunction {
     private final byte[] serializedConfig;
     private final HBaseTableSchema hbaseTableSchema;
     private final String nullStringLiteral;
+    private final int[][] projection;
 
     private transient Connection hConnection;
     private transient HTable table;
@@ -72,11 +73,13 @@ public class HBaseRowDataLookupFunction extends LookupFunction {
             String hTableName,
             HBaseTableSchema hbaseTableSchema,
             String nullStringLiteral,
+            int[][] projection,
             int maxRetryTimes) {
         this.serializedConfig = HBaseConfigurationUtil.serializeConfiguration(configuration);
         this.hTableName = hTableName;
         this.hbaseTableSchema = hbaseTableSchema;
         this.nullStringLiteral = nullStringLiteral;
+        this.projection = projection;
         this.maxRetryTimes = maxRetryTimes;
     }
 
@@ -154,7 +157,7 @@ public class HBaseRowDataLookupFunction extends LookupFunction {
             LOG.error("Exception while creating connection to HBase.", ioe);
             throw new RuntimeException("Cannot create connection to HBase.", ioe);
         }
-        this.serde = new HBaseSerde(hbaseTableSchema, nullStringLiteral);
+        this.serde = new HBaseSerde(hbaseTableSchema, projection, nullStringLiteral);
         LOG.info("end open.");
     }
 

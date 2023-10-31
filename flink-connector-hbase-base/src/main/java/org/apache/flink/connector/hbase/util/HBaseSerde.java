@@ -55,6 +55,7 @@ public class HBaseSerde {
     private static final int MIN_TIME_PRECISION = 0;
     private static final int MAX_TIME_PRECISION = 3;
 
+    private final int[][] projection;
     private final byte[] nullStringBytes;
 
     // row key index in output row
@@ -76,19 +77,33 @@ public class HBaseSerde {
     private final FieldDecoder[][] qualifierDecoders;
     private final GenericRowData rowWithRowKey;
 
-    public HBaseSerde(HBaseTableSchema hbaseSchema, final String nullStringLiteral) {
+    public HBaseSerde(
+            HBaseTableSchema hbaseSchema,
+            final int[][] projection,
+            final String nullStringLiteral) {
+        this.projection = projection;
         this.families = hbaseSchema.getFamilyKeys();
-        this.rowkeyIndex = hbaseSchema.getRowKeyIndex();
         LogicalType rowkeyType =
                 hbaseSchema.getRowKeyDataType().map(DataType::getLogicalType).orElse(null);
 
+        if (projection != null) {
+            boolean matched =
+                    Arrays.stream(projection)
+                            .mapToInt(indexPath -> indexPath[0])
+                            .distinct()
+                            .anyMatch(index -> index == hbaseSchema.getRowKeyIndex());
+            this.rowkeyIndex = matched ? hbaseSchema.getRowKeyIndex() : -1;
+        } else {
+            this.rowkeyIndex = hbaseSchema.getRowKeyIndex();
+        }
+
         // field length need take row key into account if it exists.
         if (rowkeyIndex != -1 && rowkeyType != null) {
-            this.fieldLength = families.length + 1;
+            this.fieldLength = projection != null ? projection.length : families.length + 1;
             this.keyEncoder = createFieldEncoder(rowkeyType);
             this.keyDecoder = createFieldDecoder(rowkeyType);
         } else {
-            this.fieldLength = families.length;
+            this.fieldLength = projection != null ? projection.length : families.length;
             this.keyEncoder = null;
             this.keyDecoder = null;
         }
@@ -189,11 +204,39 @@ public class HBaseSerde {
      */
     public Scan createScan() {
         Scan scan = new Scan();
-        for (int f = 0; f < families.length; f++) {
-            byte[] family = families[f];
-            for (int q = 0; q < qualifiers[f].length; q++) {
-                byte[] quantifier = qualifiers[f][q];
-                scan.addColumn(family, quantifier);
+        if (projection != null) {
+            for (int i = 0; i < projection.length; i++) {
+                int[] indexPath = projection[i];
+                int topIndex = indexPath[0];
+                if (rowkeyIndex == topIndex) {
+                    continue;
+                }
+                int f = (rowkeyIndex != -1 && i > rowkeyIndex) ? topIndex - 1 : topIndex;
+                byte[] family = families[f];
+                if (indexPath.length == 1) {
+                    // scan the whole family
+                    for (int q = 0; q < qualifiers[f].length; q++) {
+                        byte[] quantifier = qualifiers[f][q];
+                        scan.addColumn(family, quantifier);
+                    }
+                } else if (indexPath.length == 2) {
+                    // scan by projection
+                    for (int q = 1; q < projection[i].length; q++) {
+                        byte[] quantifier = qualifiers[f][indexPath[q]];
+                        scan.addColumn(family, quantifier);
+                    }
+                } else {
+                    throw new IllegalArgumentException(
+                            "The length of the projection index path can not more than 2.");
+                }
+            }
+        } else {
+            for (int f = 0; f < families.length; f++) {
+                byte[] family = families[f];
+                for (int q = 0; q < qualifiers[f].length; q++) {
+                    byte[] quantifier = qualifiers[f][q];
+                    scan.addColumn(family, quantifier);
+                }
             }
         }
         return scan;
@@ -213,10 +256,38 @@ public class HBaseSerde {
             return null;
         }
         Get get = new Get(rowkey);
-        for (int f = 0; f < families.length; f++) {
-            byte[] family = families[f];
-            for (byte[] qualifier : qualifiers[f]) {
-                get.addColumn(family, qualifier);
+        if (projection != null) {
+            for (int i = 0; i < projection.length; i++) {
+                int[] indexPath = projection[i];
+                int topIndex = indexPath[0];
+                if (rowkeyIndex == topIndex) {
+                    continue;
+                }
+                int f = (rowkeyIndex != -1 && i > rowkeyIndex) ? topIndex - 1 : topIndex;
+                byte[] family = families[f];
+                if (indexPath.length == 1) {
+                    // get the whole family
+                    for (int q = 0; q < qualifiers[f].length; q++) {
+                        byte[] quantifier = qualifiers[f][q];
+                        get.addColumn(family, quantifier);
+                    }
+                } else if (indexPath.length == 2) {
+                    // get by projection
+                    for (int q = 1; q < projection[i].length; q++) {
+                        byte[] quantifier = qualifiers[f][indexPath[q]];
+                        get.addColumn(family, quantifier);
+                    }
+                } else {
+                    throw new IllegalArgumentException(
+                            "The length of the projection index path can not more than 2.");
+                }
+            }
+        } else {
+            for (int f = 0; f < families.length; f++) {
+                byte[] family = families[f];
+                for (byte[] qualifier : qualifiers[f]) {
+                    get.addColumn(family, qualifier);
+                }
             }
         }
         return get;
@@ -235,6 +306,9 @@ public class HBaseSerde {
         for (int f = 0; f < families.length; f++) {
             familyRows[f] = new GenericRowData(qualifiers[f].length);
         }
+        if (projection != null) {
+            return convertToRowWithProjection(result, resultRow, familyRows);
+        }
         return convertToRow(result, resultRow, familyRows);
     }
 
@@ -244,6 +318,9 @@ public class HBaseSerde {
      * <p>Note: this method is NOT thread-safe.
      */
     public RowData convertToReusedRow(Result result) {
+        if (projection != null) {
+            return convertToRowWithProjection(result, reusedRow, reusedFamilyRows);
+        }
         return convertToRow(result, reusedRow, reusedFamilyRows);
     }
 
@@ -267,6 +344,42 @@ public class HBaseSerde {
                     familyRow.setField(q, qualifierDecoders[f][q].decode(value));
                 }
                 resultRow.setField(i, familyRow);
+            }
+        }
+        return resultRow;
+    }
+
+    private RowData convertToRowWithProjection(
+            Result result, GenericRowData resultRow, GenericRowData[] familyRows) {
+        for (int i = 0; i < projection.length; i++) {
+            int[] indexPath = projection[i];
+            int topIndex = indexPath[0];
+            if (rowkeyIndex == topIndex) {
+                assert keyDecoder != null;
+                Object rowkey = keyDecoder.decode(result.getRow());
+                resultRow.setField(i, rowkey);
+            } else {
+                int f = (rowkeyIndex != -1 && i > rowkeyIndex) ? topIndex - 1 : topIndex;
+                byte[] familyKey = families[f];
+                if (indexPath.length == 1) {
+                    // convert the while family
+                    GenericRowData familyRow = familyRows[f];
+                    for (int q = 0; q < this.qualifiers[f].length; q++) {
+                        byte[] qualifier = qualifiers[f][q];
+                        byte[] value = result.getValue(familyKey, qualifier);
+                        familyRow.setField(q, qualifierDecoders[f][q].decode(value));
+                    }
+                    resultRow.setField(i, familyRow);
+                } else if (indexPath.length == 2) {
+                    // convert by projection
+                    int nestIndex = indexPath[1];
+                    byte[] qualifier = qualifiers[f][nestIndex];
+                    byte[] value = result.getValue(familyKey, qualifier);
+                    resultRow.setField(i, qualifierDecoders[f][nestIndex].decode(value));
+                } else {
+                    throw new IllegalArgumentException(
+                            "The length of the projection index path can not more than 2.");
+                }
             }
         }
         return resultRow;

@@ -68,6 +68,11 @@ public abstract class HBaseTestingClusterAutoStarter extends AbstractTestBase {
 
     private static final Log LOG = LogFactory.getLog(HBaseTestingClusterAutoStarter.class);
 
+    static {
+        System.setProperty("test.build.data.basedirectory", "D:\\environment\\hbase-data");
+        System.setProperty("hadoop.home.dir", "D:\\environment\\hadoop-2.8.1");
+    }
+
     private static final HBaseTestingUtility TEST_UTIL = new HBaseTestingUtility();
     private static HBaseAdmin admin = null;
     private static List<TableName> createdTables = new ArrayList<>();

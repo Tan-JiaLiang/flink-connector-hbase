@@ -104,6 +104,7 @@ public class HBaseRowDataAsyncLookupFunctionTest extends HBaseTestBase {
                 TEST_TABLE_1,
                 hbaseSchema,
                 "null",
+                null,
                 LookupOptions.MAX_RETRIES.defaultValue());
     }
 }
