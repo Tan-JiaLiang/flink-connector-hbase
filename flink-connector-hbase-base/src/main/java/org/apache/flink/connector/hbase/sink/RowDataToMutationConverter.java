@@ -23,6 +23,7 @@ import org.apache.flink.connector.hbase.util.HBaseTableSchema;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.types.RowKind;
 
+import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.client.Mutation;
 
 /**
@@ -33,13 +34,21 @@ public class RowDataToMutationConverter implements HBaseMutationConverter<RowDat
     private static final long serialVersionUID = 1L;
 
     private final HBaseTableSchema schema;
+    private final boolean hasMetadata;
+    private final int[] metadataPositions;
     private final String nullStringLiteral;
     private final boolean ignoreNullValue;
     private transient HBaseSerde serde;
 
     public RowDataToMutationConverter(
-            HBaseTableSchema schema, final String nullStringLiteral, boolean ignoreNullValue) {
+            HBaseTableSchema schema,
+            boolean hasMetadata,
+            int[] metadataPositions,
+            final String nullStringLiteral,
+            boolean ignoreNullValue) {
         this.schema = schema;
+        this.hasMetadata = hasMetadata;
+        this.metadataPositions = metadataPositions;
         this.nullStringLiteral = nullStringLiteral;
         this.ignoreNullValue = ignoreNullValue;
     }
@@ -51,11 +60,27 @@ public class RowDataToMutationConverter implements HBaseMutationConverter<RowDat
 
     @Override
     public Mutation convertToMutation(RowData record) {
+        Long timestamp = HConstants.LATEST_TIMESTAMP;
+        if (hasMetadata) {
+            timestamp = (Long) readMetadata(record, WritableMetadata.TIMESTAMP);
+            if (timestamp == null) {
+                timestamp = HConstants.LATEST_TIMESTAMP;
+            }
+        }
+
         RowKind kind = record.getRowKind();
         if (kind == RowKind.INSERT || kind == RowKind.UPDATE_AFTER) {
-            return serde.createPutMutation(record);
+            return serde.createPutMutation(record, timestamp);
         } else {
-            return serde.createDeleteMutation(record);
+            return serde.createDeleteMutation(record, timestamp);
         }
+    }
+
+    private Object readMetadata(RowData consumedRow, WritableMetadata metadata) {
+        final int pos = metadataPositions[metadata.ordinal()];
+        if (pos < 0) {
+            return null;
+        }
+        return metadata.converter.read(consumedRow, pos);
     }
 }
