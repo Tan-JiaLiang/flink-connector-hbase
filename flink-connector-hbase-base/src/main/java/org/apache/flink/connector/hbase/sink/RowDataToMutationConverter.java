@@ -21,10 +21,15 @@ package org.apache.flink.connector.hbase.sink;
 import org.apache.flink.connector.hbase.util.HBaseSerde;
 import org.apache.flink.connector.hbase.util.HBaseTableSchema;
 import org.apache.flink.table.data.RowData;
+import org.apache.flink.table.types.DataType;
 import org.apache.flink.types.RowKind;
 
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.client.Mutation;
+
+import javax.annotation.Nullable;
+
+import java.util.List;
 
 /**
  * An implementation of {@link HBaseMutationConverter} which converts {@link RowData} into {@link
@@ -34,23 +39,21 @@ public class RowDataToMutationConverter implements HBaseMutationConverter<RowDat
     private static final long serialVersionUID = 1L;
 
     private final HBaseTableSchema schema;
-    private final boolean hasMetadata;
-    private final int[] metadataPositions;
     private final String nullStringLiteral;
     private final boolean ignoreNullValue;
+    @Nullable private final WritableMetadata.TimestampMetadata timestampMetadata;
     private transient HBaseSerde serde;
 
     public RowDataToMutationConverter(
             HBaseTableSchema schema,
-            boolean hasMetadata,
-            int[] metadataPositions,
-            final String nullStringLiteral,
+            DataType physicalDataType,
+            List<String> metadataKeys,
+            String nullStringLiteral,
             boolean ignoreNullValue) {
         this.schema = schema;
-        this.hasMetadata = hasMetadata;
-        this.metadataPositions = metadataPositions;
         this.nullStringLiteral = nullStringLiteral;
         this.ignoreNullValue = ignoreNullValue;
+        this.timestampMetadata = initTimestampMetadata(metadataKeys, physicalDataType);
     }
 
     @Override
@@ -61,9 +64,10 @@ public class RowDataToMutationConverter implements HBaseMutationConverter<RowDat
     @Override
     public Mutation convertToMutation(RowData record) {
         Long timestamp = HConstants.LATEST_TIMESTAMP;
-        if (hasMetadata) {
-            timestamp = (Long) readMetadata(record, WritableMetadata.TIMESTAMP);
+        if (timestampMetadata != null) {
+            timestamp = timestampMetadata.read(record);
             if (timestamp == null) {
+
                 timestamp = HConstants.LATEST_TIMESTAMP;
             }
         }
@@ -76,11 +80,14 @@ public class RowDataToMutationConverter implements HBaseMutationConverter<RowDat
         }
     }
 
-    private Object readMetadata(RowData consumedRow, WritableMetadata metadata) {
-        final int pos = metadataPositions[metadata.ordinal()];
+    private WritableMetadata.TimestampMetadata initTimestampMetadata(
+            List<String> metadataKeys, DataType physicalDataType) {
+        int pos = metadataKeys.indexOf(WritableMetadata.TimestampMetadata.KEY);
         if (pos < 0) {
             return null;
         }
-        return metadata.converter.read(consumedRow, pos);
+
+        return new WritableMetadata.TimestampMetadata(
+                pos + physicalDataType.getLogicalType().getChildren().size());
     }
 }

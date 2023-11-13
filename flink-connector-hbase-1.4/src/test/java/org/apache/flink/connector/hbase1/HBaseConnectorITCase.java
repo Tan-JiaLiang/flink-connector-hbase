@@ -605,7 +605,11 @@ public class HBaseConnectorITCase extends HBaseTestBase {
                         TEST_NOT_EXISTS_TABLE,
                         hbaseConf,
                         new RowDataToMutationConverter(
-                                tableSchema, false, new int[] {}, "null", false),
+                                tableSchema,
+                                tableSchema.convertToDataType(),
+                                Collections.emptyList(),
+                                "null",
+                                false),
                         2 * 1024 * 1024,
                         1000,
                         1000);
