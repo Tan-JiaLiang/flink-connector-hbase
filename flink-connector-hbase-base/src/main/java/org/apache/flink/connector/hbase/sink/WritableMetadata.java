@@ -25,46 +25,32 @@ import org.apache.flink.table.types.DataType;
 import java.io.Serializable;
 
 /** Writable metadata for HBase. */
-public enum WritableMetadata {
-    TIMESTAMP(
-            "timestamp",
-            DataTypes.TIMESTAMP_WITH_LOCAL_TIME_ZONE(3).nullable(),
-            new MetadataConverter() {
-                private static final long serialVersionUID = 1L;
+public abstract class WritableMetadata<T> implements Serializable {
 
-                @Override
-                public Object read(RowData row, int pos) {
-                    if (row.isNullAt(pos)) {
-                        throw new IllegalArgumentException(
-                                String.format(
-                                        "Writable metadata %s can not accept null value",
-                                        TIMESTAMP.key));
-                    }
-                    return row.getTimestamp(pos, 3).getMillisecond();
-                }
-            });
+    private static final long serialVersionUID = 1L;
 
-    final String key;
+    public abstract T read(RowData row);
 
-    final DataType dataType;
+    /** Timestamp metadata for HBase. */
+    public static class TimestampMetadata extends WritableMetadata<Long> {
 
-    final MetadataConverter converter;
+        public static final String KEY = "timestamp";
+        public static final DataType DATA_TYPE =
+                DataTypes.TIMESTAMP_WITH_LOCAL_TIME_ZONE(3).nullable();
 
-    WritableMetadata(String key, DataType dataType, MetadataConverter converter) {
-        this.key = key;
-        this.dataType = dataType;
-        this.converter = converter;
-    }
+        private final int pos;
 
-    public String getKey() {
-        return key;
-    }
+        public TimestampMetadata(int pos) {
+            this.pos = pos;
+        }
 
-    public DataType getDataType() {
-        return dataType;
-    }
-
-    interface MetadataConverter extends Serializable {
-        Object read(RowData consumedRow, int pos);
+        @Override
+        public Long read(RowData row) {
+            if (row.isNullAt(pos)) {
+                throw new IllegalArgumentException(
+                        String.format("Writable metadata '%s' can not accept null value", KEY));
+            }
+            return row.getTimestamp(pos, 3).getMillisecond();
+        }
     }
 }

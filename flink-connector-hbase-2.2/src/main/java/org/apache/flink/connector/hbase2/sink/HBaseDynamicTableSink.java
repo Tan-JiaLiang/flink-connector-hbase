@@ -23,7 +23,7 @@ import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.connector.hbase.options.HBaseWriteOptions;
 import org.apache.flink.connector.hbase.sink.HBaseSinkFunction;
 import org.apache.flink.connector.hbase.sink.RowDataToMutationConverter;
-import org.apache.flink.connector.hbase.sink.WritableMetadata;
+import org.apache.flink.connector.hbase.sink.WritableMetadata.TimestampMetadata;
 import org.apache.flink.connector.hbase.util.HBaseTableSchema;
 import org.apache.flink.table.connector.ChangelogMode;
 import org.apache.flink.table.connector.sink.DynamicTableSink;
@@ -31,16 +31,15 @@ import org.apache.flink.table.connector.sink.SinkFunctionProvider;
 import org.apache.flink.table.connector.sink.abilities.SupportsWritingMetadata;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.types.DataType;
-import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.types.RowKind;
+
+import org.apache.flink.shaded.guava30.com.google.common.collect.ImmutableMap;
 
 import org.apache.hadoop.conf.Configuration;
 
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Stream;
 
 /** HBase table sink implementation. */
 @Internal
@@ -73,16 +72,14 @@ public class HBaseDynamicTableSink implements DynamicTableSink, SupportsWritingM
 
     @Override
     public SinkRuntimeProvider getSinkRuntimeProvider(Context context) {
-        int[] metadataPositions =
-                getMetadataPositions(physicalDataType.getLogicalType().getChildren());
         HBaseSinkFunction<RowData> sinkFunction =
                 new HBaseSinkFunction<>(
                         tableName,
                         hbaseConf,
                         new RowDataToMutationConverter(
                                 hbaseTableSchema,
-                                metadataKeys.size() > 0,
-                                metadataPositions,
+                                physicalDataType,
+                                metadataKeys,
                                 nullStringLiteral,
                                 writeOptions.isIgnoreNullValue()),
                         writeOptions.getBufferFlushMaxSizeInBytes(),
@@ -105,10 +102,7 @@ public class HBaseDynamicTableSink implements DynamicTableSink, SupportsWritingM
 
     @Override
     public Map<String, DataType> listWritableMetadata() {
-        final Map<String, DataType> metadataMap = new LinkedHashMap<>();
-        Stream.of(WritableMetadata.values())
-                .forEachOrdered(m -> metadataMap.put(m.getKey(), m.getDataType()));
-        return metadataMap;
+        return ImmutableMap.of(TimestampMetadata.KEY, TimestampMetadata.DATA_TYPE);
     }
 
     @Override
@@ -147,18 +141,5 @@ public class HBaseDynamicTableSink implements DynamicTableSink, SupportsWritingM
     @VisibleForTesting
     public String getTableName() {
         return this.tableName;
-    }
-
-    private int[] getMetadataPositions(List<LogicalType> physicalChildren) {
-        return Stream.of(WritableMetadata.values())
-                .mapToInt(
-                        m -> {
-                            final int pos = metadataKeys.indexOf(m.getKey());
-                            if (pos < 0) {
-                                return -1;
-                            }
-                            return physicalChildren.size() + pos;
-                        })
-                .toArray();
     }
 }
