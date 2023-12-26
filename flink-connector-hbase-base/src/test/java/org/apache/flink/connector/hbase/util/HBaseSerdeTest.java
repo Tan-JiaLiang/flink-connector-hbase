@@ -27,6 +27,7 @@ import org.apache.flink.table.types.DataType;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.KeyValue;
+import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.util.Bytes;
@@ -62,7 +63,7 @@ class HBaseSerdeTest {
 
     @Test
     void convertToNewRowTest() {
-        HBaseSerde serde = createHBaseSerde(false);
+        HBaseSerde serde = createHBaseSerde(false, false);
         List<List<Cell>> cellsList = prepareCells();
         List<RowData> resultRowDatas = new ArrayList<>();
         List<String> resultRowDataStr = new ArrayList<>();
@@ -83,7 +84,7 @@ class HBaseSerdeTest {
 
     @Test
     void convertToReusedRowTest() {
-        HBaseSerde serde = createHBaseSerde(false);
+        HBaseSerde serde = createHBaseSerde(false, false);
         List<List<Cell>> cellsList = prepareCells();
         List<RowData> resultRowDatas = new ArrayList<>();
         List<String> resultRowDataStr = new ArrayList<>();
@@ -105,7 +106,7 @@ class HBaseSerdeTest {
 
     @Test
     public void writeIgnoreNullValueTest() {
-        HBaseSerde serde = createHBaseSerde(false);
+        HBaseSerde serde = createHBaseSerde(false, false);
         Put m1 = serde.createPutMutation(prepareRowData(), HConstants.LATEST_TIMESTAMP, null);
         assert m1 != null;
         assertThat(m1.getRow()).isNotEmpty();
@@ -116,7 +117,7 @@ class HBaseSerdeTest {
         assertThat(m1.get(FAMILY3.getBytes(), F3COL2.getBytes())).isNotEmpty();
         assertThat(m1.get(FAMILY3.getBytes(), F3COL3.getBytes())).isNotEmpty();
 
-        HBaseSerde writeIgnoreNullValueSerde = createHBaseSerde(true);
+        HBaseSerde writeIgnoreNullValueSerde = createHBaseSerde(true, false);
         Put m2 =
                 writeIgnoreNullValueSerde.createPutMutation(
                         prepareRowData(), HConstants.LATEST_TIMESTAMP, null);
@@ -128,6 +129,19 @@ class HBaseSerdeTest {
         assertThat(m2.get(FAMILY3.getBytes(), F2COL1.getBytes())).isNotEmpty();
         assertThat(m2.get(FAMILY3.getBytes(), F3COL2.getBytes())).isNotEmpty();
         assertThat(m2.get(FAMILY3.getBytes(), F3COL3.getBytes())).isEmpty();
+    }
+
+    @Test
+    public void writeIgnoreDeleteTest() {
+        HBaseSerde serde = createHBaseSerde(false, false);
+        Delete m1 = serde.createDeleteMutation(prepareRowData(), HConstants.LATEST_TIMESTAMP);
+        assertThat(m1).isNotNull();
+
+        HBaseSerde writeIgnoreDeleteSerde = createHBaseSerde(false, true);
+        Delete m2 =
+                writeIgnoreDeleteSerde.createDeleteMutation(
+                        prepareRowData(), HConstants.LATEST_TIMESTAMP);
+        assertThat(m2).isNull();
     }
 
     private HBaseTableSchema createHBaseTableSchema() {
@@ -145,8 +159,9 @@ class HBaseSerdeTest {
         return HBaseTableSchema.fromDataType(dataType);
     }
 
-    private HBaseSerde createHBaseSerde(boolean writeIgnoreNullValue) {
-        return new HBaseSerde(createHBaseTableSchema(), "null", writeIgnoreNullValue);
+    private HBaseSerde createHBaseSerde(boolean writeIgnoreNullValue, boolean writeIgnoreDelete) {
+        return new HBaseSerde(
+                createHBaseTableSchema(), "null", writeIgnoreNullValue, writeIgnoreDelete);
     }
 
     private List<List<Cell>> prepareCells() {

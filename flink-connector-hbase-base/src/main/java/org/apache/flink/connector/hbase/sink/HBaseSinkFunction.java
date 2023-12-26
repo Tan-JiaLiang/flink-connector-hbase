@@ -203,7 +203,12 @@ public class HBaseSinkFunction<T> extends RichSinkFunction<T>
     public void invoke(T value, Context context) throws Exception {
         checkErrorAndRethrow();
 
-        mutator.mutate(mutationConverter.convertToMutation(value));
+        Mutation mutation = mutationConverter.convertToMutation(value);
+        if (mutation == null) {
+            return;
+        }
+
+        mutator.mutate(mutation);
 
         // flush when the buffer number of mutations greater than the configured max size.
         if (bufferFlushMaxMutations > 0

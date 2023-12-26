@@ -40,6 +40,7 @@ public class RowDataToMutationConverter implements HBaseMutationConverter<RowDat
     private final HBaseTableSchema schema;
     private final String nullStringLiteral;
     private final boolean ignoreNullValue;
+    private final boolean ignoreDelete;
     private final TimestampMetadata timestampMetadata;
     private final TimeToLiveMetadata timeToLiveMetadata;
     private transient HBaseSerde serde;
@@ -49,17 +50,19 @@ public class RowDataToMutationConverter implements HBaseMutationConverter<RowDat
             DataType physicalDataType,
             List<String> metadataKeys,
             String nullStringLiteral,
-            boolean ignoreNullValue) {
+            boolean ignoreNullValue,
+            boolean ignoreDelete) {
         this.schema = schema;
         this.nullStringLiteral = nullStringLiteral;
         this.ignoreNullValue = ignoreNullValue;
+        this.ignoreDelete = ignoreDelete;
         this.timestampMetadata = new TimestampMetadata(metadataKeys, physicalDataType);
         this.timeToLiveMetadata = new TimeToLiveMetadata(metadataKeys, physicalDataType);
     }
 
     @Override
     public void open() {
-        this.serde = new HBaseSerde(schema, nullStringLiteral, ignoreNullValue);
+        this.serde = new HBaseSerde(schema, nullStringLiteral, ignoreNullValue, ignoreDelete);
     }
 
     @Override

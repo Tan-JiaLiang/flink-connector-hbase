@@ -58,6 +58,7 @@ public class HBaseSerde {
     private final byte[] nullStringBytes;
 
     private final boolean writeIgnoreNullValue;
+    private final boolean writeIgnoreDelete;
 
     // row key index in output row
     private final int rowkeyIndex;
@@ -79,13 +80,14 @@ public class HBaseSerde {
     private final GenericRowData rowWithRowKey;
 
     public HBaseSerde(HBaseTableSchema hbaseSchema, final String nullStringLiteral) {
-        this(hbaseSchema, nullStringLiteral, false);
+        this(hbaseSchema, nullStringLiteral, false, false);
     }
 
     public HBaseSerde(
             HBaseTableSchema hbaseSchema,
             final String nullStringLiteral,
-            boolean writeIgnoreNullValue) {
+            boolean writeIgnoreNullValue,
+            boolean writeIgnoreDelete) {
         this.families = hbaseSchema.getFamilyKeys();
         this.rowkeyIndex = hbaseSchema.getRowKeyIndex();
         LogicalType rowkeyType =
@@ -103,6 +105,7 @@ public class HBaseSerde {
         }
         this.nullStringBytes = nullStringLiteral.getBytes(StandardCharsets.UTF_8);
         this.writeIgnoreNullValue = writeIgnoreNullValue;
+        this.writeIgnoreDelete = writeIgnoreDelete;
 
         // prepare output rows
         this.reusedRow = new GenericRowData(fieldLength);
@@ -140,7 +143,7 @@ public class HBaseSerde {
         byte[] rowkey = keyEncoder.encode(row, rowkeyIndex);
         if (rowkey.length == 0) {
             // drop dirty records, rowkey shouldn't be zero length
-            return null;
+            throw new IllegalArgumentException("rowkey shouldn't be zero length");
         }
         // upsert
         Put put = new Put(rowkey, timestamp);
@@ -176,11 +179,15 @@ public class HBaseSerde {
      * @return The appropriate instance of Delete for this use case.
      */
     public @Nullable Delete createDeleteMutation(RowData row, long timestamp) {
+        if (writeIgnoreDelete) {
+            return null;
+        }
+
         checkArgument(keyEncoder != null, "row key is not set.");
         byte[] rowkey = keyEncoder.encode(row, rowkeyIndex);
         if (rowkey.length == 0) {
             // drop dirty records, rowkey shouldn't be zero length
-            return null;
+            throw new IllegalArgumentException("rowkey shouldn't be zero length");
         }
         // delete
         Delete delete = new Delete(rowkey, timestamp);
